@@ -165,6 +165,9 @@ class LayoutEngine:
 
     def _add_line(self, line: Line) -> None:
         self._ensure_space(line.height)
+        line.y = self._y
+        for run in line.runs:
+            run.y = self._y
         self.pages[-1].lines.append(line)
         self._y -= line.height
 
@@ -180,7 +183,7 @@ class LayoutEngine:
                     TextRun(
                         text=piece,
                         x=x,
-                        y=self._y,
+                        y=0.0,
                         font_size=span.font_size,
                         bold=span.bold,
                         italic=span.italic,
@@ -192,7 +195,7 @@ class LayoutEngine:
 
             line = Line(
                 runs=runs,
-                y=self._y,
+                y=0.0,
                 height=_line_height([s for s, _ in fragments]),
                 align=para.align,
             )

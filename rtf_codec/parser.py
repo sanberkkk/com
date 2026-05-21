@@ -105,7 +105,7 @@ def _parse_control(ctrl: str, state: Etat) -> Optional[str]:
         if code < 0:
             code += 65536
         if code <= 0x10FFFF:
-            return f"text:{chr(code)}"
+            return f"unicode:{chr(code)}"
     elif name in RTF_SPECIAL:
         return f"text:{RTF_SPECIAL[name]}"
     elif name == "intbl":
@@ -217,11 +217,18 @@ class RtfParser:
                     continue
 
                 action = _parse_control(tok, self.state)
+                if action and action.startswith("unicode:"):
+                    if not self._span_style:
+                        self._span_style = copy(self.state)
+                    self._span_buf += action[8:]
+                    self._skip_uc_fallback = 1
+                    continue
                 if action and action.startswith("text:"):
                     if not self._span_style:
                         self._span_style = copy(self.state)
                     self._span_buf += action[5:]
-                    self._skip_uc_fallback = 1
+                    if tok.endswith(" "):
+                        self._span_buf += " "
                     continue
                 if action == "pard":
                     continue

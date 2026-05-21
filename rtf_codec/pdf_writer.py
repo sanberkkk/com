@@ -12,7 +12,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from .layout import LayoutResult, Page, PlacedTable, TextRun
+from .layout import Align, LayoutResult, Page, PlacedTable, TextRun
 
 FONT_REGULAR = "/System/Library/Fonts/Supplemental/Arial.ttf"
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
@@ -61,13 +61,29 @@ class PdfWriter:
         c.save()
         return buf.getvalue()
 
+    def _draw_line(self, c: canvas.Canvas, line, page_height: float) -> None:
+        if not line.runs:
+            return
+        y = page_height - line.y
+        styles = {(r.bold, r.italic, r.font_size) for r in line.runs}
+        if line.align != Align.JUSTIFY and len(styles) == 1:
+            text = "".join(r.text for r in line.runs).replace("\u00a0", " ")
+            if not text.strip():
+                return
+            r0 = line.runs[0]
+            c.setFont(_font_name(r0), r0.font_size)
+            c.drawString(r0.x, y, text)
+            return
+        for run in line.runs:
+            text = run.text.replace("\u00a0", " ")
+            if not text:
+                continue
+            c.setFont(_font_name(run), run.font_size)
+            c.drawString(run.x, y, text)
+
     def _draw_page(self, c: canvas.Canvas, page: Page, page_height: float) -> None:
         for line in page.lines:
-            for run in line.runs:
-                if not run.text:
-                    continue
-                c.setFont(_font_name(run), run.font_size)
-                c.drawString(run.x, page_height - run.y, run.text)
+            self._draw_line(c, line, page_height)
 
         for img in page.images:
             y = page_height - img.y - img.height
