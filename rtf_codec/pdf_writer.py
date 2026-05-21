@@ -124,7 +124,8 @@ class PdfWriter:
         row_y = y_bottom
         for rh in table.row_heights:
             row_y += rh
-            c.line(x0, row_y, x0 + total_w, row_y)
+            if row_y < y_top - 0.5:
+                c.line(x0, row_y, x0 + total_w, row_y)
 
         row_y = y_bottom
         for row, rh in zip(reversed(table.cells), reversed(table.row_heights)):
@@ -132,7 +133,7 @@ class PdfWriter:
             for ci, (lines, bold, font_size) in enumerate(row):
                 if lines:
                     block_h = len(lines) * line_step
-                    base_y = row_y + (rh - block_h) / 2 + 3
+                    base_y = row_y + (rh - block_h) / 2
                     c.setFont(_ensure_fonts()[(bold, False)], font_size)
                     for li, line_text in enumerate(lines):
                         display = line_text.replace("\u00a0", " ").rstrip("~ ")

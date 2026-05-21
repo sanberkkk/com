@@ -288,6 +288,8 @@ class LayoutEngine:
         row_heights: List[float] = []
 
         for row in table.rows:
+            if not any("".join(s.text for s in cell.spans).strip() for cell in row.cells):
+                continue
             row_cells: List[Tuple[List[str], bool, float]] = []
             max_lines = 1
             for ci, cell in enumerate(row.cells):
@@ -298,7 +300,8 @@ class LayoutEngine:
                 lines = _wrap_cell_text(text, col_w - inset - cell_pad, fs, cell.bold)
                 max_lines = max(max_lines, len(lines) or 1)
                 row_cells.append((lines, cell.bold, fs))
-            rh = max(min_row, (max_lines - 1) * line_step + 20.0)
+            text_h = max_lines * line_step
+            rh = max(min_row, (max_lines - 1) * line_step + 20.0, text_h + 8.0)
             row_heights.append(rh)
             cells_layout.append(row_cells)
 
