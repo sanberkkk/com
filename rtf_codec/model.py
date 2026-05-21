@@ -49,6 +49,8 @@ class TableRow:
 class Table:
     rows: List[TableRow] = field(default_factory=list)
     col_widths_pt: List[float] = field(default_factory=list)
+    trleft_twips: int = -15
+    trrh_twips: int = 336
 
 
 @dataclass

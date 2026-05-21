@@ -83,7 +83,7 @@ def _parse_control(ctrl: str, state: Etat) -> Optional[str]:
         state.bold = num != "0"
     elif name == "i":
         state.italic = num != "0"
-    elif name == "fs" and num:
+    elif name in ("fs", "afs") and num:
         state.font_size = max(6.0, int(num) / 2.0)
     elif name in ("ql", "qr", "qj", "qc"):
         state.align = {
@@ -110,6 +110,11 @@ def _parse_control(ctrl: str, state: Etat) -> Optional[str]:
         return f"text:{RTF_SPECIAL[name]}"
     elif name == "intbl":
         state.in_table = True
+        state.align = Align.LEFT
+    elif name == "trrh" and num:
+        return f"trrh:{num}"
+    elif name == "trleft" and num:
+        return f"trleft:{num}"
     elif name == "pard":
         state.align = Align.LEFT
         return "pard"
@@ -135,6 +140,8 @@ class RtfParser:
         self._row: Optional[TableRow] = None
         self._cell = TableCell()
         self._col_twips: List[int] = []
+        self._table_trleft = -15
+        self._table_trrh = 336
         self._skip_uc_fallback = 0
 
     @property
@@ -143,6 +150,7 @@ class RtfParser:
 
     def _flush_span(self) -> None:
         if not self._span_buf:
+            self._span_style = None
             return
         st = self._span_style or self.state
         text = _decode_text(self._span_buf)
@@ -182,14 +190,15 @@ class RtfParser:
     def _finish_table(self) -> None:
         if self._table and self._table.rows:
             if self._col_twips:
-                widths = [w / 20.0 for w in self._col_twips]
-                total = sum(widths) or 1.0
-                usable = (
-                    self.document.page_width_pt
-                    - self.document.margin_left_pt
-                    - self.document.margin_right_pt
-                )
-                self._table.col_widths_pt = [usable * (w / total) for w in widths]
+                positions = sorted(self._col_twips)
+                prev = self._table_trleft
+                widths: List[float] = []
+                for pos in positions:
+                    widths.append((pos - prev) / 20.0)
+                    prev = pos
+                self._table.col_widths_pt = widths
+            self._table.trleft_twips = self._table_trleft
+            self._table.trrh_twips = self._table_trrh
             self.document.blocks.append(Block(kind="table", table=self._table))
         self._table = None
         self._row = None
@@ -248,6 +257,12 @@ class RtfParser:
                         self._table.rows.append(self._row)
                     self._row = TableRow()
                     continue
+                if action and action.startswith("trrh:"):
+                    self._table_trrh = int(action[5:])
+                    continue
+                if action and action.startswith("trleft:"):
+                    self._table_trleft = int(action[7:])
+                    continue
                 if action == "trowd":
                     if self._table is None:
                         self._table = Table()
@@ -255,6 +270,7 @@ class RtfParser:
                         self._table.rows.append(self._row)
                     self._row = TableRow()
                     self.state.in_table = True
+                    self.state.align = Align.LEFT
                     self._col_twips = []
                     continue
                 if action and action.startswith("image"):

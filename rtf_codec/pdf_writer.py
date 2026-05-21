@@ -107,9 +107,11 @@ class PdfWriter:
         x0 = table.x
         rows = len(table.cells)
         total_w = sum(table.col_widths)
-        height = table.row_height * rows
+        height = sum(table.row_heights)
         y_bottom = table.y
         y_top = table.y + height
+        cell_pad = 15.0 / 20.0
+        line_step = 17.0
 
         c.setLineWidth(0.5)
         c.rect(x0, y_bottom, total_w, height, stroke=1, fill=0)
@@ -119,20 +121,25 @@ class PdfWriter:
             cx += w
             c.line(cx, y_bottom, cx, y_top)
 
-        for r in range(1, rows):
-            ry = y_bottom + r * table.row_height
-            c.line(x0, ry, x0 + total_w, ry)
+        row_y = y_bottom
+        for rh in table.row_heights:
+            row_y += rh
+            c.line(x0, row_y, x0 + total_w, row_y)
 
+        row_y = y_bottom
         for ri, row in enumerate(table.cells):
-            cy = y_bottom + (rows - 1 - ri) * table.row_height + 6
-            cx = x0 + 4
-            for ci, (text, bold) in enumerate(row):
-                if text:
-                    display = text.replace("\u00a0", " ").rstrip("~ ")
-                    c.setFont(
-                        _ensure_fonts()[(bold, False)],
-                        12,
-                    )
-                    c.drawString(cx, cy, display)
+            rh = table.row_heights[ri]
+            cx = x0
+            for ci, (lines, bold, font_size) in enumerate(row):
+                if lines:
+                    block_h = len(lines) * line_step
+                    base_y = row_y + (rh - block_h) / 2 + 3
+                    c.setFont(_ensure_fonts()[(bold, False)], font_size)
+                    for li, line_text in enumerate(lines):
+                        display = line_text.replace("\u00a0", " ").rstrip("~ ")
+                        if display:
+                            inset = 0.0 if ci == 0 else cell_pad
+                            c.drawString(cx + inset, base_y + li * line_step, display)
                 if ci < len(table.col_widths):
                     cx += table.col_widths[ci]
+            row_y += rh

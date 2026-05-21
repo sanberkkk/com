@@ -50,8 +50,8 @@ class PlacedTable:
     x: float
     y: float
     col_widths: List[float]
-    row_height: float
-    cells: List[List[Tuple[str, bool]]]
+    row_heights: List[float]
+    cells: List[List[Tuple[List[str], bool, float]]]
 
 
 @dataclass
@@ -92,9 +92,42 @@ def measure_text(text: str, size: float, bold: bool, italic: bool) -> float:
 
 
 def _line_height(spans: List[Span]) -> float:
+    """Interligne aligné sur \\sl278\\slmult1 (référence v4.pdf)."""
     if not spans:
-        return 14.0
-    return max(s.font_size for s in spans) * 1.38 + 4.0
+        return 17.0
+    fs = max(s.font_size for s in spans)
+    return fs * 1.415 + 0.3
+
+
+def _paragraph_space_after() -> float:
+    """\\sa160 → 8 pt."""
+    return 8.0
+
+
+def _wrap_cell_text(text: str, max_width: float, font_size: float, bold: bool) -> List[str]:
+    if not text or max_width <= 0:
+        return []
+    words = text.replace("\u00a0", " ").split()
+    lines: List[str] = []
+    current: List[str] = []
+    width = 0.0
+
+    def flush() -> None:
+        nonlocal current, width
+        if current:
+            lines.append(" ".join(current))
+        current = []
+        width = 0.0
+
+    for wi, word in enumerate(words):
+        piece = word if wi == len(words) - 1 else word + " "
+        w = measure_text(piece, font_size, bold, False)
+        if width + w > max_width and current:
+            flush()
+        current.append(word)
+        width += w
+    flush()
+    return lines or [text]
 
 
 def _wrap_paragraph(
@@ -180,7 +213,7 @@ class LayoutEngine:
 
     def _layout_paragraph(self, para: Paragraph) -> None:
         wrapped = _wrap_paragraph(para, self.content_width)
-        for fragments in wrapped:
+        for line_idx, fragments in enumerate(wrapped):
             runs: List[TextRun] = []
             x = self._margin_left
             max_size = 12.0
@@ -217,10 +250,13 @@ class LayoutEngine:
                 offset = (self.content_width - total) / 2
                 for r in runs:
                     r.x += offset
-            elif para.align == Align.JUSTIFY:
+            elif para.align == Align.JUSTIFY and line_idx < len(wrapped) - 1:
                 _justify_extra(runs, self.content_width)
 
             self._add_line(line)
+
+        if wrapped and wrapped[0]:
+            self._y -= _paragraph_space_after()
 
     def _layout_image(self, data: bytes, w_px: int, h_px: int) -> None:
         target_w = self.content_width
@@ -239,27 +275,44 @@ class LayoutEngine:
         self._y = img_y - 12
 
     def _layout_table(self, table: Table) -> None:
-        cols = table.col_widths_pt or [self.content_width / max(1, len(table.rows[0].cells))]
-        row_h = 22.0
-        needed = row_h * len(table.rows) + 16
+        ncols = len(table.rows[0].cells) if table.rows else 0
+        cols = table.col_widths_pt or [
+            self.content_width / max(1, ncols) for _ in range(ncols)
+        ]
+        cols = cols[:ncols]
+        cell_pad = 15.0 / 20.0  # \\trgaph15
+        line_step = 17.0
+        min_row = max(27.0, table.trrh_twips / 20.0 * 1.6)
+
+        cells_layout: List[List[Tuple[List[str], bool, float]]] = []
+        row_heights: List[float] = []
+
+        for row in table.rows:
+            row_cells: List[Tuple[List[str], bool, float]] = []
+            max_lines = 1
+            for ci, cell in enumerate(row.cells):
+                text = "".join(s.text for s in cell.spans).strip()
+                fs = max((s.font_size for s in cell.spans), default=12.0)
+                col_w = cols[ci] if ci < len(cols) else cols[-1]
+                inset = 0.0 if ci == 0 else cell_pad
+                lines = _wrap_cell_text(text, col_w - inset - cell_pad, fs, cell.bold)
+                max_lines = max(max_lines, len(lines) or 1)
+                row_cells.append((lines, cell.bold, fs))
+            rh = max(min_row, (max_lines - 1) * line_step + 20.0)
+            row_heights.append(rh)
+            cells_layout.append(row_cells)
+
+        needed = sum(row_heights) + 16
         self._ensure_space(needed)
 
-        cells_text: List[List[Tuple[str, bool]]] = []
-        for row in table.rows:
-            row_cells = []
-            for cell in row.cells:
-                text = "".join(s.text for s in cell.spans)
-                row_cells.append((text.strip(), cell.bold))
-            cells_text.append(row_cells)
-
-        table_y = self._y - row_h * len(table.rows)
+        table_y = self._y - sum(row_heights)
         self.pages[-1].tables.append(
             PlacedTable(
                 x=self._margin_left,
                 y=table_y,
-                col_widths=cols[: len(cells_text[0])] if cells_text else cols,
-                row_height=row_h,
-                cells=cells_text,
+                col_widths=cols,
+                row_heights=row_heights,
+                cells=cells_layout,
             )
         )
         self._y = table_y - 16
