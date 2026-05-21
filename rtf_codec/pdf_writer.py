@@ -127,8 +127,7 @@ class PdfWriter:
             c.line(x0, row_y, x0 + total_w, row_y)
 
         row_y = y_bottom
-        for ri, row in enumerate(table.cells):
-            rh = table.row_heights[ri]
+        for row, rh in zip(reversed(table.cells), reversed(table.row_heights)):
             cx = x0
             for ci, (lines, bold, font_size) in enumerate(row):
                 if lines:
