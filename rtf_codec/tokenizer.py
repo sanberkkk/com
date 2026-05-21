@@ -20,7 +20,7 @@ def extract_jpeg_from_block(block: str) -> bytes | None:
     chunk = block[start:]
     pairs = re.findall(r"[0-9a-fA-F]{2}", chunk, flags=re.I)
     hex_str = "".join(pairs)
-    end = hex_str.lower().find("ffd9")
+    end = hex_str.lower().rfind("ffd9")
     if end < 0:
         return None
     hex_str = hex_str[: end + 4]

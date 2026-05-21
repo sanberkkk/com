@@ -64,7 +64,8 @@ class PdfWriter:
     def _draw_line(self, c: canvas.Canvas, line, page_height: float) -> None:
         if not line.runs:
             return
-        y = page_height - line.y
+        # layout._y est déjà en coordonnées PDF (origine en bas)
+        y = line.y
         styles = {(r.bold, r.italic, r.font_size) for r in line.runs}
         if line.align != Align.JUSTIFY and len(styles) == 1:
             text = "".join(r.text for r in line.runs).replace("\u00a0", " ")
@@ -86,13 +87,12 @@ class PdfWriter:
             self._draw_line(c, line, page_height)
 
         for img in page.images:
-            y = page_height - img.y - img.height
             pil_img = Image.open(io.BytesIO(img.data))
             pil_img.load()
             c.drawImage(
                 ImageReader(pil_img),
                 img.x,
-                y,
+                img.y,
                 width=img.width,
                 height=img.height,
                 preserveAspectRatio=True,
@@ -103,12 +103,13 @@ class PdfWriter:
             self._draw_table(c, table, page_height)
 
     def _draw_table(self, c: canvas.Canvas, table: PlacedTable, page_height: float) -> None:
+        del page_height
         x0 = table.x
-        y_top = page_height - table.y
         rows = len(table.cells)
         total_w = sum(table.col_widths)
         height = table.row_height * rows
-        y_bottom = y_top - height
+        y_bottom = table.y
+        y_top = table.y + height
 
         c.setLineWidth(0.5)
         c.rect(x0, y_bottom, total_w, height, stroke=1, fill=0)
@@ -119,11 +120,11 @@ class PdfWriter:
             c.line(cx, y_bottom, cx, y_top)
 
         for r in range(1, rows):
-            ry = y_top - r * table.row_height
+            ry = y_bottom + r * table.row_height
             c.line(x0, ry, x0 + total_w, ry)
 
         for ri, row in enumerate(table.cells):
-            cy = y_top - (ri + 1) * table.row_height + 6
+            cy = y_bottom + (rows - 1 - ri) * table.row_height + 6
             cx = x0 + 4
             for ci, (text, bold) in enumerate(row):
                 if text:

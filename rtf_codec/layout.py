@@ -4,7 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-from PIL import ImageFont
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from .model import Align, Block, Document, Paragraph, Span, Table
 
@@ -12,6 +13,8 @@ FONT_REGULAR = "/System/Library/Fonts/Supplemental/Arial.ttf"
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 FONT_ITALIC = "/System/Library/Fonts/Supplemental/Arial Italic.ttf"
 FONT_BOLD_ITALIC = "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf"
+
+_FONTS_REGISTERED = False
 
 
 @dataclass
@@ -65,23 +68,27 @@ class LayoutResult:
     page_height: float = 841.92
 
 
-def _font_path(bold: bool, italic: bool) -> str:
-    if bold and italic:
-        return FONT_BOLD_ITALIC
-    if bold:
-        return FONT_BOLD
-    if italic:
-        return FONT_ITALIC
-    return FONT_REGULAR
-
-
-def _pil_font(size: float, bold: bool, italic: bool) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(_font_path(bold, italic), max(6, int(round(size))))
+def _ensure_layout_fonts() -> None:
+    global _FONTS_REGISTERED
+    if not _FONTS_REGISTERED:
+        pdfmetrics.registerFont(TTFont("Arial", FONT_REGULAR))
+        pdfmetrics.registerFont(TTFont("Arial-Bold", FONT_BOLD))
+        pdfmetrics.registerFont(TTFont("Arial-Italic", FONT_ITALIC))
+        pdfmetrics.registerFont(TTFont("Arial-BoldItalic", FONT_BOLD_ITALIC))
+        _FONTS_REGISTERED = True
 
 
 def measure_text(text: str, size: float, bold: bool, italic: bool) -> float:
-    font = _pil_font(size, bold, italic)
-    return float(font.getlength(text))
+    _ensure_layout_fonts()
+    if bold and italic:
+        font_name = "Arial-BoldItalic"
+    elif bold:
+        font_name = "Arial-Bold"
+    elif italic:
+        font_name = "Arial-Italic"
+    else:
+        font_name = "Arial"
+    return pdfmetrics.stringWidth(text, font_name, size)
 
 
 def _line_height(spans: List[Span]) -> float:
